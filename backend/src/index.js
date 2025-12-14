@@ -10,13 +10,18 @@ const path = require('path');
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 
-// 数据库文件存放在 backend/data/db.json
-const dbPath = path.join(__dirname, '..', 'data', 'db.json');
+// 数据库文件路径：
+// - 生产环境（Railway）：使用 /app/data（Volume 挂载点）
+// - 开发环境：使用 backend/data
 const fs = require('fs');
-const dataDir = path.dirname(dbPath);
+const isProduction = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production';
+const dataDir = isProduction ? '/app/data' : path.join(__dirname, '..', 'data');
+const dbPath = path.join(dataDir, 'db.json');
+
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
+console.log(`📁 数据库路径: ${dbPath}`);
 
 const adapter = new FileSync(dbPath);
 const db = low(adapter);
