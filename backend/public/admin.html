@@ -178,6 +178,7 @@
     }
     
     .status-active { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+    .status-unused { background: rgba(108, 117, 125, 0.2); color: #adb5bd; }
     .status-idle { background: rgba(40, 167, 69, 0.2); color: #28a745; }
     .status-in_use { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
     .status-banned { background: rgba(220, 53, 69, 0.2); color: #dc3545; }
@@ -530,7 +531,7 @@
                 <button class="copy-btn" onclick="copyText('${key.key_code}')">复制</button>
               </td>
               <td><span class="mode-badge mode-${key.mode || 'time'}">${key.mode === 'switch_count' ? '次数模式' : '时间模式'}</span></td>
-              <td><span class="status-badge status-${key.status}">${key.status}</span></td>
+              <td><span class="status-badge status-${getKeyStatus(key).class}">${getKeyStatus(key).text}</span></td>
               <td>${getKeyDetail(key)}</td>
               <td>${formatDate(key.created_at)}</td>
               <td>
@@ -544,6 +545,28 @@
       } catch (e) {
         console.error('加载激活码失败', e);
       }
+    }
+    
+    // 获取激活码状态（区分未使用/已激活/已过期/已封禁）
+    function getKeyStatus(key) {
+      // 已封禁
+      if (key.status === 'banned') {
+        return { class: 'banned', text: '已封禁' };
+      }
+      // 已过期（时间模式）
+      if (key.expired_at && new Date(key.expired_at) < new Date()) {
+        return { class: 'expired', text: '已过期' };
+      }
+      // 次数模式用完
+      if (key.mode === 'switch_count' && key.switch_used >= key.switch_total) {
+        return { class: 'expired', text: '已用完' };
+      }
+      // 未使用（未激活）
+      if (!key.activated_at) {
+        return { class: 'unused', text: '未使用' };
+      }
+      // 已激活
+      return { class: 'active', text: '已激活' };
     }
     
     // 获取激活码详情
