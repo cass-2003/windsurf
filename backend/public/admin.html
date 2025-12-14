@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XG-Windsurf 管理后台</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #e4e4e4;
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 20px 30px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(10px);
+    }
+    
+    header h1 {
+      font-size: 24px;
+      background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .stats-bar {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .stat-item {
+      background: rgba(255,255,255,0.1);
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    
+    .stat-item .number {
+      font-size: 24px;
+      font-weight: bold;
+      color: #00d4ff;
+    }
+    
+    .stat-item .label {
+      font-size: 12px;
+      color: #888;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .tab-btn {
+      padding: 12px 24px;
+      border: none;
+      background: rgba(255,255,255,0.1);
+      color: #e4e4e4;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    
+    .tab-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .tab-btn.active {
+      background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+      color: white;
+    }
+    
+    .panel {
+      display: none;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .panel.active {
+      display: block;
+    }
+    
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .panel-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background: #c82333;
+    }
+    
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    th {
+      background: rgba(255,255,255,0.05);
+      font-weight: 600;
+      color: #00d4ff;
+    }
+    
+    tr:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .status-active { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+    .status-idle { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+    .status-in_use { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+    .status-banned { background: rgba(220, 53, 69, 0.2); color: #dc3545; }
+    .status-expired { background: rgba(108, 117, 125, 0.2); color: #6c757d; }
+    
+    .mode-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    
+    .mode-time { background: rgba(0, 212, 255, 0.2); color: #00d4ff; }
+    .mode-switch_count { background: rgba(123, 44, 191, 0.2); color: #a855f7; }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    
+    .modal.show {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: #1a1a2e;
+      border-radius: 12px;
+      padding: 30px;
+      width: 500px;
+      max-width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 24px;
+      cursor: pointer;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #888;
+      font-size: 14px;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      color: #e4e4e4;
+      font-size: 14px;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+    
+    .form-group textarea {
+      min-height: 150px;
+      resize: vertical;
+    }
+    
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 8px;
+      color: white;
+      font-size: 14px;
+      z-index: 2000;
+      animation: slideIn 0.3s ease;
+    }
+    
+    .toast-success { background: #28a745; }
+    .toast-error { background: #dc3545; }
+    
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+    
+    .copy-btn {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #888;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .copy-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: #e4e4e4;
+    }
+    
+    .key-code {
+      font-family: 'Courier New', monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    
+    .refresh-btn {
+      background: none;
+      border: none;
+      color: #00d4ff;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 10px;
+    }
+    
+    .refresh-btn:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏄 XG-Windsurf 管理后台</h1>
+      <div class="stats-bar">
+        <div class="stat-item">
+          <div class="number" id="stat-keys">-</div>
+          <div class="label">激活码总数</div>
+        </div>
+        <div class="stat-item">
+          <div class="number" id="stat-accounts">-</div>
+          <div class="label">账号总数</div>
+        </div>
+        <div class="stat-item">
+          <div class="number" id="stat-idle">-</div>
+          <div class="label">空闲账号</div>
+        </div>
+        <div class="stat-item">
+          <div class="number" id="stat-in-use">-</div>
+          <div class="label">使用中</div>
+        </div>
+      </div>
+    </header>
+    
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="keys">激活码管理</button>
+      <button class="tab-btn" data-tab="accounts">号池管理</button>
+    </div>
+    
+    <!-- 激活码管理面板 -->
+    <div class="panel active" id="panel-keys">
+      <div class="panel-header">
+        <span class="panel-title">激活码列表 <button class="refresh-btn" onclick="loadKeys()">🔄 刷新</button></span>
+        <button class="btn btn-primary" onclick="showModal('generate-key-modal')">+ 生成激活码</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>激活码</th>
+            <th>模式</th>
+            <th>状态</th>
+            <th>详情</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="keys-table-body">
+          <tr><td colspan="6" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- 号池管理面板 -->
+    <div class="panel" id="panel-accounts">
+      <div class="panel-header">
+        <span class="panel-title">账号列表 <button class="refresh-btn" onclick="loadAccounts()">🔄 刷新</button></span>
+        <button class="btn btn-primary" onclick="showModal('import-accounts-modal')">+ 导入账号</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>登录名</th>
+            <th>状态</th>
+            <th>当前绑定</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="accounts-table-body">
+          <tr><td colspan="6" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+  <!-- 生成激活码弹窗 -->
+  <div class="modal" id="generate-key-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">生成激活码</span>
+        <button class="modal-close" onclick="hideModal('generate-key-modal')">&times;</button>
+      </div>
+      <form id="generate-key-form">
+        <div class="form-group">
+          <label>激活码模式</label>
+          <select id="key-mode" onchange="toggleModeFields()">
+            <option value="time">时间模式（有效期 n 天）</option>
+            <option value="switch_count">次数模式（可切换 n 次）</option>
+          </select>
+        </div>
+        <div class="form-group" id="validity-days-group">
+          <label>有效期（天）</label>
+          <input type="number" id="validity-days" value="30" min="1" max="365">
+        </div>
+        <div class="form-group" id="switch-total-group" style="display:none;">
+          <label>可切换次数</label>
+          <input type="number" id="switch-total" value="10" min="1" max="1000">
+        </div>
+        <div class="form-group">
+          <label>生成数量</label>
+          <input type="number" id="key-count" value="1" min="1" max="100">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">生成</button>
+      </form>
+    </div>
+  </div>
+  
+  <!-- 导入账号弹窗 -->
+  <div class="modal" id="import-accounts-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">导入 Windsurf 账号</span>
+        <button class="modal-close" onclick="hideModal('import-accounts-modal')">&times;</button>
+      </div>
+      <form id="import-accounts-form">
+        <div class="form-group">
+          <label>账号列表（每行一个，格式：邮箱----密码）</label>
+          <textarea id="accounts-text" placeholder="example1@email.com----password1&#10;example2@email.com----password2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">导入</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';  // 相对路径，部署后自动指向当前域名
+    
+    // Tab 切换
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(`panel-${btn.dataset.tab}`).classList.add('active');
+      });
+    });
+    
+    // 显示/隐藏弹窗
+    function showModal(id) {
+      document.getElementById(id).classList.add('show');
+    }
+    
+    function hideModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+    
+    // Toast 提示
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+    
+    // 切换模式字段显示
+    function toggleModeFields() {
+      const mode = document.getElementById('key-mode').value;
+      document.getElementById('validity-days-group').style.display = mode === 'time' ? 'block' : 'none';
+      document.getElementById('switch-total-group').style.display = mode === 'switch_count' ? 'block' : 'none';
+    }
+    
+    // 加载统计信息
+    async function loadStats() {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/pool-stats`);
+        const data = await res.json();
+        if (data.code === 0) {
+          document.getElementById('stat-keys').textContent = data.data.keys.total;
+          document.getElementById('stat-accounts').textContent = data.data.accounts.total;
+          document.getElementById('stat-idle').textContent = data.data.accounts.idle;
+          document.getElementById('stat-in-use').textContent = data.data.accounts.in_use;
+        }
+      } catch (e) {
+        console.error('加载统计失败', e);
+      }
+    }
+    
+    // 加载激活码列表
+    async function loadKeys() {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/list-keys`);
+        const data = await res.json();
+        const tbody = document.getElementById('keys-table-body');
+        
+        if (data.code === 0 && data.data.keys.length > 0) {
+          tbody.innerHTML = data.data.keys.map(key => `
+            <tr>
+              <td>
+                <span class="key-code">${key.key_code}</span>
+                <button class="copy-btn" onclick="copyText('${key.key_code}')">复制</button>
+              </td>
+              <td><span class="mode-badge mode-${key.mode || 'time'}">${key.mode === 'switch_count' ? '次数模式' : '时间模式'}</span></td>
+              <td><span class="status-badge status-${key.status}">${key.status}</span></td>
+              <td>${getKeyDetail(key)}</td>
+              <td>${formatDate(key.created_at)}</td>
+              <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteKey('${key.key_code}')">删除</button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无激活码</td></tr>';
+        }
+      } catch (e) {
+        console.error('加载激活码失败', e);
+      }
+    }
+    
+    // 获取激活码详情
+    function getKeyDetail(key) {
+      if (key.mode === 'switch_count') {
+        return `${key.switch_used || 0} / ${key.switch_total || '-'} 次`;
+      } else {
+        if (key.expired_at) {
+          return `到期: ${formatDate(key.expired_at)}`;
+        }
+        return `${key.validity_days || 30} 天有效`;
+      }
+    }
+    
+    // 加载账号列表
+    async function loadAccounts() {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/list-accounts`);
+        const data = await res.json();
+        const tbody = document.getElementById('accounts-table-body');
+        
+        if (data.code === 0 && data.data.accounts.length > 0) {
+          tbody.innerHTML = data.data.accounts.map(acc => `
+            <tr>
+              <td>${acc.id}</td>
+              <td>${acc.login}</td>
+              <td><span class="status-badge status-${acc.status}">${acc.status === 'idle' ? '空闲' : '使用中'}</span></td>
+              <td>${acc.current_key || '-'}</td>
+              <td>${formatDate(acc.created_at)}</td>
+              <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${acc.id}')" ${acc.status === 'in_use' ? 'disabled' : ''}>删除</button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无账号，请点击右上角导入</td></tr>';
+        }
+      } catch (e) {
+        console.error('加载账号失败', e);
+      }
+    }
+    
+    // 生成激活码
+    document.getElementById('generate-key-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mode = document.getElementById('key-mode').value;
+      const body = {
+        mode,
+        count: parseInt(document.getElementById('key-count').value),
+      };
+      if (mode === 'time') {
+        body.validity_days = parseInt(document.getElementById('validity-days').value);
+      } else {
+        body.switch_total = parseInt(document.getElementById('switch-total').value);
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/generate-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          showToast(`成功生成 ${data.data.count} 个激活码`);
+          hideModal('generate-key-modal');
+          loadKeys();
+          loadStats();
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch (e) {
+        showToast('生成失败', 'error');
+      }
+    });
+    
+    // 导入账号
+    document.getElementById('import-accounts-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = document.getElementById('accounts-text').value.trim();
+      if (!text) {
+        showToast('请输入账号列表', 'error');
+        return;
+      }
+      
+      const accounts = text.split('\n').map(line => {
+        const parts = line.split('----');
+        if (parts.length >= 2) {
+          return { login: parts[0].trim(), password: parts[1].trim() };
+        }
+        return null;
+      }).filter(Boolean);
+      
+      if (accounts.length === 0) {
+        showToast('格式错误，请使用：邮箱----密码', 'error');
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/import-accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accounts }),
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          showToast(`成功导入 ${data.data.imported_count} 个账号`);
+          hideModal('import-accounts-modal');
+          document.getElementById('accounts-text').value = '';
+          loadAccounts();
+          loadStats();
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch (e) {
+        showToast('导入失败', 'error');
+      }
+    });
+    
+    // 删除激活码
+    async function deleteKey(keyCode) {
+      if (!confirm(`确定要删除激活码 ${keyCode} 吗？`)) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/delete-key/${keyCode}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.code === 0) {
+          showToast('删除成功');
+          loadKeys();
+          loadStats();
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch (e) {
+        showToast('删除失败', 'error');
+      }
+    }
+    
+    // 删除账号
+    async function deleteAccount(id) {
+      if (!confirm('确定要删除该账号吗？')) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/delete-account/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.code === 0) {
+          showToast('删除成功');
+          loadAccounts();
+          loadStats();
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch (e) {
+        showToast('删除失败', 'error');
+      }
+    }
+    
+    // 复制文本
+    function copyText(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('已复制到剪贴板');
+      });
+    }
+    
+    // 格式化日期
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    
+    // 初始化
+    loadStats();
+    loadKeys();
+    loadAccounts();
+  </script>
+</body>
+</html>

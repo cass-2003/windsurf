@@ -22,13 +22,21 @@ const adapter = new FileSync(dbPath);
 const db = low(adapter);
 
 // 设置数据库默认结构
-db.defaults({ keys: [], announcements: [] }).write();
+db.defaults({ 
+  keys: [],           // 激活码
+  accounts: [],       // Windsurf 账号池
+  assignments: [],    // 激活码与账号的绑定关系
+  announcements: [] 
+}).write();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// 静态文件服务（管理后台）
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // 统一响应封装函数
 function success(data = null, message = 'success') {
@@ -61,90 +69,246 @@ function generateActivationCode(length = 16, useSeparator = true) {
 
 // ========== 数据库操作封装 ==========
 const KeysDB = {
-  // 获取激活码
   get(key_code) {
     return db.get('keys').find({ key_code }).value();
   },
-  // 检查是否存在
   has(key_code) {
     return !!this.get(key_code);
   },
-  // 添加激活码
   add(record) {
     db.get('keys').push(record).write();
   },
-  // 更新激活码
   update(key_code, updates) {
     db.get('keys').find({ key_code }).assign(updates).write();
   },
-  // 删除激活码
   delete(key_code) {
     db.get('keys').remove({ key_code }).write();
   },
-  // 获取所有激活码
   getAll() {
     return db.get('keys').value();
   },
-  // 获取数量
   count() {
     return db.get('keys').size().value();
   }
 };
 
-// 初始化测试激活码（仅在数据库为空时）
+// ========== 号池数据库操作 ==========
+const AccountsDB = {
+  // 获取单个账号
+  get(id) {
+    return db.get('accounts').find({ id }).value();
+  },
+  // 获取所有账号
+  getAll() {
+    return db.get('accounts').value();
+  },
+  // 获取空闲账号
+  getIdle() {
+    return db.get('accounts').filter({ status: 'idle' }).value();
+  },
+  // 添加账号
+  add(record) {
+    db.get('accounts').push(record).write();
+  },
+  // 更新账号
+  update(id, updates) {
+    db.get('accounts').find({ id }).assign(updates).write();
+  },
+  // 删除账号
+  delete(id) {
+    db.get('accounts').remove({ id }).write();
+  },
+  // 数量
+  count() {
+    return db.get('accounts').size().value();
+  }
+};
+
+// ========== 分配记录数据库操作 ==========
+const AssignmentsDB = {
+  // 根据激活码获取当前有效的分配
+  getByKeyCode(key_code) {
+    return db.get('assignments').find({ key_code, status: 'active' }).value();
+  },
+  // 根据账号ID获取当前分配
+  getByAccountId(account_id) {
+    return db.get('assignments').filter({ account_id, status: 'active' }).value();
+  },
+  // 添加分配记录
+  add(record) {
+    db.get('assignments').push(record).write();
+  },
+  // 更新分配记录
+  update(id, updates) {
+    db.get('assignments').find({ id }).assign(updates).write();
+  },
+  // 释放分配（标记为 released）
+  release(id) {
+    db.get('assignments').find({ id }).assign({ status: 'released', released_at: new Date().toISOString() }).write();
+  },
+  // 获取所有分配
+  getAll() {
+    return db.get('assignments').value();
+  }
+};
+
+// ========== 号池核心逻辑 ==========
+/**
+ * 为激活码分配一个 Windsurf 账号
+ * @param {string} key_code - 激活码
+ * @param {string} device_id - 设备ID
+ * @returns {{ success: boolean, account?: object, error?: string }}
+ */
+function assignAccountToKey(key_code, device_id) {
+  // 检查是否已有分配
+  const existingAssignment = AssignmentsDB.getByKeyCode(key_code);
+  if (existingAssignment) {
+    // 已有分配，返回现有账号
+    const account = AccountsDB.get(existingAssignment.account_id);
+    if (account) {
+      return { success: true, account, assignment: existingAssignment };
+    }
+  }
+  
+  // 获取一个空闲账号
+  const idleAccounts = AccountsDB.getIdle();
+  if (idleAccounts.length === 0) {
+    return { success: false, error: '暂无可用账号，请稍后再试' };
+  }
+  
+  // 选择第一个空闲账号（可以改成随机选择）
+  const account = idleAccounts[0];
+  
+  // 创建分配记录
+  const assignmentId = `assign_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const assignment = {
+    id: assignmentId,
+    key_code,
+    account_id: account.id,
+    device_id,
+    assigned_at: new Date().toISOString(),
+    status: 'active'
+  };
+  
+  AssignmentsDB.add(assignment);
+  
+  // 更新账号状态为使用中
+  AccountsDB.update(account.id, { 
+    status: 'in_use', 
+    current_key: key_code,
+    last_assigned_at: new Date().toISOString()
+  });
+  
+  return { success: true, account, assignment };
+}
+
+/**
+ * 切换账号（消耗一次切换次数）
+ * @param {string} key_code - 激活码
+ * @param {string} device_id - 设备ID
+ * @returns {{ success: boolean, account?: object, error?: string }}
+ */
+function switchAccount(key_code, device_id) {
+  const keyRecord = KeysDB.get(key_code);
+  if (!keyRecord) {
+    return { success: false, error: '激活码无效' };
+  }
+  
+  // 检查激活码模式和剩余次数
+  if (keyRecord.mode === 'switch_count') {
+    if (keyRecord.switch_used >= keyRecord.switch_total) {
+      return { success: false, error: '切换次数已用完' };
+    }
+  }
+  
+  // 释放当前账号
+  const currentAssignment = AssignmentsDB.getByKeyCode(key_code);
+  if (currentAssignment) {
+    AssignmentsDB.release(currentAssignment.id);
+    AccountsDB.update(currentAssignment.account_id, { 
+      status: 'idle', 
+      current_key: null 
+    });
+  }
+  
+  // 分配新账号
+  const result = assignAccountToKey(key_code, device_id);
+  
+  if (result.success && keyRecord.mode === 'switch_count') {
+    // 消耗一次切换次数
+    KeysDB.update(key_code, { 
+      switch_used: (keyRecord.switch_used || 0) + 1 
+    });
+  }
+  
+  return result;
+}
+
+// 初始化测试数据（仅在数据库为空时）
 if (KeysDB.count() === 0) {
   const now = Date.now();
   const oneMonthMs = 30 * 24 * 3600 * 1000;
   
+  // 测试激活码 - 新结构支持两种模式
   const demoKeys = [
     {
-      key_code: 'DEMO-VALID-1',
+      key_code: 'DEMO-TIME-30D',
       device_id: null,
-      quota_total: 10000,
-      quota_used: 100,
-      activated_at: new Date(now).toISOString(),
-      expired_at: new Date(now + oneMonthMs).toISOString(),
+      mode: 'time',              // 时间模式
+      validity_days: 30,         // 有效期30天
+      switch_total: null,        // 时间模式不限切换次数
+      switch_used: 0,
+      activated_at: null,
+      expired_at: null,          // 激活时计算
       status: 'active',
       created_at: new Date(now).toISOString(),
     },
     {
-      key_code: 'DEMO-EXPIRED-1',
+      key_code: 'DEMO-SWITCH-10',
       device_id: null,
-      quota_total: 5000,
-      quota_used: 5000,
-      activated_at: new Date(now - oneMonthMs).toISOString(),
-      expired_at: new Date(now - 24 * 3600 * 1000).toISOString(),
-      status: 'expired',
-      created_at: new Date(now - oneMonthMs).toISOString(),
-    },
-    {
-      key_code: 'DEMO-BANNED-1',
-      device_id: null,
-      quota_total: 8000,
-      quota_used: 0,
-      activated_at: new Date(now - 7 * 24 * 3600 * 1000).toISOString(),
-      expired_at: new Date(now + oneMonthMs).toISOString(),
-      status: 'banned',
-      created_at: new Date(now - 7 * 24 * 3600 * 1000).toISOString(),
-    },
-    {
-      key_code: 'DEMO-BOUND-1',
-      device_id: 'OTHER-DEVICE-ID',
-      quota_total: 12000,
-      quota_used: 200,
-      activated_at: new Date(now - 3 * 24 * 3600 * 1000).toISOString(),
-      expired_at: new Date(now + oneMonthMs).toISOString(),
+      mode: 'switch_count',      // 次数模式
+      validity_days: null,       // 次数模式不限时间
+      switch_total: 10,          // 可切换10次
+      switch_used: 0,
+      activated_at: null,
+      expired_at: null,
       status: 'active',
-      created_at: new Date(now - 3 * 24 * 3600 * 1000).toISOString(),
+      created_at: new Date(now).toISOString(),
     }
   ];
   
   demoKeys.forEach(key => KeysDB.add(key));
-  console.log('✅ 已初始化 4 个测试激活码');
+  console.log('✅ 已初始化 2 个测试激活码（时间模式 + 次数模式）');
+}
+
+// 初始化测试账号池（仅在为空时）
+if (AccountsDB.count() === 0) {
+  const demoAccounts = [
+    {
+      id: 'acc_001',
+      login: 'demo1@example.com',
+      password: 'demo_password_1',  // 实际使用时应加密
+      status: 'idle',
+      current_key: null,
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'acc_002',
+      login: 'demo2@example.com',
+      password: 'demo_password_2',
+      status: 'idle',
+      current_key: null,
+      created_at: new Date().toISOString(),
+    }
+  ];
+  
+  demoAccounts.forEach(acc => AccountsDB.add(acc));
+  console.log('✅ 已初始化 2 个测试账号');
 }
 
 // POST /api/account/validate-key
 // request: { key_code, device_id }
+// 激活码验证 + 自动分配 Windsurf 账号
 app.post('/api/account/validate-key', (req, res) => {
   const { key_code, device_id } = req.body || {};
 
@@ -154,57 +318,89 @@ app.post('/api/account/validate-key', (req, res) => {
 
   const record = KeysDB.get(key_code);
   if (!record) {
-    return res.json(error('激活码无效')); // code != 0 视为失败
+    return res.json(error('激活码无效'));
   }
 
   const nowDate = new Date();
-  const expiredAt = record.expired_at ? new Date(record.expired_at) : null;
 
   // 状态校验：封禁
   if (record.status === 'banned') {
     return res.json(error('激活码已被封禁', 1002));
   }
 
-  // 状态校验：过期（无论 status 是否设置为 expired，只要时间已过期都视为过期）
-  if (expiredAt && expiredAt.getTime() < nowDate.getTime()) {
-    return res.json(error('激活码已过期', 1001));
+  // 时间模式：检查是否过期
+  if (record.mode === 'time' && record.expired_at) {
+    const expiredAt = new Date(record.expired_at);
+    if (expiredAt.getTime() < nowDate.getTime()) {
+      return res.json(error('激活码已过期', 1001));
+    }
   }
 
-  // 设备绑定校验：如果已绑定到其他设备，则不允许再次绑定
+  // 次数模式：检查切换次数是否用完
+  if (record.mode === 'switch_count') {
+    if ((record.switch_used || 0) >= (record.switch_total || 0)) {
+      return res.json(error('切换次数已用完', 1004));
+    }
+  }
+
+  // 设备绑定校验
   if (record.device_id && record.device_id !== device_id) {
     return res.json(error('该激活码已绑定到其他设备', 1003));
   }
 
-  // 通过校验：绑定到当前设备（如果之前未绑定）
+  // 首次激活：设置激活时间和过期时间
   const updates = { device_id };
   if (!record.activated_at) {
     updates.activated_at = nowDate.toISOString();
+    // 时间模式：激活时计算过期时间
+    if (record.mode === 'time' && record.validity_days) {
+      const expiredAt = new Date(nowDate.getTime() + record.validity_days * 24 * 3600 * 1000);
+      updates.expired_at = expiredAt.toISOString();
+    }
   }
   KeysDB.update(key_code, updates);
+  
+  // 分配 Windsurf 账号
+  const assignResult = assignAccountToKey(key_code, device_id);
   
   // 重新获取更新后的记录
   const updatedRecord = KeysDB.get(key_code);
 
-  const quota_total = updatedRecord.quota_total;
-  const quota_used = updatedRecord.quota_used;
-  const quota_remaining = quota_total - quota_used;
-
-  return res.json(success({
+  // 构建响应数据
+  const responseData = {
     valid: true,
     key_code,
     device_id,
+    mode: updatedRecord.mode,
     checked_at: nowDate.toISOString(),
-    quota_used,
-    quota_total,
-    quota_remaining,
     activated_at: updatedRecord.activated_at,
     expired_at: updatedRecord.expired_at,
-    config: JSON.stringify({ example: true }),
-  }));
+    // 时间模式信息
+    validity_days: updatedRecord.validity_days,
+    // 次数模式信息
+    switch_total: updatedRecord.switch_total,
+    switch_used: updatedRecord.switch_used || 0,
+    switch_remaining: updatedRecord.switch_total ? (updatedRecord.switch_total - (updatedRecord.switch_used || 0)) : null,
+  };
+
+  // 如果成功分配了账号，返回账号信息
+  if (assignResult.success && assignResult.account) {
+    responseData.windsurf_account = {
+      login: assignResult.account.login,
+      password: assignResult.account.password,
+    };
+    responseData.has_account = true;
+  } else {
+    responseData.has_account = false;
+    responseData.account_error = assignResult.error || '暂无可用账号';
+  }
+
+  return res.json(success(responseData));
 });
 
 // POST /api/account/activate-refresh
 // request: { key_code, device_id }
+// 刷新激活码状态，返回当前绑定的账号信息
 app.post('/api/account/activate-refresh', (req, res) => {
   const { key_code, device_id } = req.body || {};
 
@@ -217,38 +413,109 @@ app.post('/api/account/activate-refresh', (req, res) => {
     return res.json(error('激活码无效'));
   }
 
-  // 伪造一个账户 JSON 字符串，前端会在 ApiService 中解析
-  const accountObject = {
-    metadata: { plan: 'pro', features: ['windsurf', 'cursor'], note: 'demo account' },
-    timestamp: Date.now(),
-  };
+  // 获取当前分配的账号
+  const assignment = AssignmentsDB.getByKeyCode(key_code);
+  let accountInfo = null;
+  if (assignment) {
+    const account = AccountsDB.get(assignment.account_id);
+    if (account) {
+      accountInfo = {
+        login: account.login,
+        password: account.password,
+      };
+    }
+  }
 
   const data = {
-    mail: 'user@example.com',
-    oem_info: {
-      reseller_name: 'Demo Reseller',
-      app_name: 'XG-Windsurf',
-      app_icon: '',
-      app_links: '',
-      reseller_status: 1,
-    },
-    key_info: {
-      key_status: 1,
-      activated_at: record.activated_at,
-      expired_at: record.expired_at,
-      quota_key_max_quota: record.quota_total,
-      quota_key_used_quota: record.quota_used,
-    },
-    account: JSON.stringify(accountObject),
-    metadata: undefined,
-    timestamp: undefined,
+    key_code,
+    mode: record.mode,
+    activated_at: record.activated_at,
+    expired_at: record.expired_at,
+    validity_days: record.validity_days,
+    switch_total: record.switch_total,
+    switch_used: record.switch_used || 0,
+    switch_remaining: record.switch_total ? (record.switch_total - (record.switch_used || 0)) : null,
+    windsurf_account: accountInfo,
+    has_account: !!accountInfo,
   };
 
   return res.json(success(data));
 });
 
+// ========== 号池接口 ==========
+
+// POST /api/pool/switch
+// 切换账号（消耗一次切换次数）
+app.post('/api/pool/switch', (req, res) => {
+  const { key_code, device_id } = req.body || {};
+
+  if (!key_code || !device_id) {
+    return res.json(error('缺少 key_code 或 device_id'));
+  }
+
+  const record = KeysDB.get(key_code);
+  if (!record) {
+    return res.json(error('激活码无效'));
+  }
+
+  // 验证设备
+  if (record.device_id !== device_id) {
+    return res.json(error('设备验证失败'));
+  }
+
+  // 执行切换
+  const result = switchAccount(key_code, device_id);
+  
+  if (!result.success) {
+    return res.json(error(result.error || '切换失败'));
+  }
+
+  const updatedRecord = KeysDB.get(key_code);
+
+  return res.json(success({
+    key_code,
+    switch_total: updatedRecord.switch_total,
+    switch_used: updatedRecord.switch_used || 0,
+    switch_remaining: updatedRecord.switch_total ? (updatedRecord.switch_total - (updatedRecord.switch_used || 0)) : null,
+    windsurf_account: {
+      login: result.account.login,
+      password: result.account.password,
+    },
+  }, '切换成功'));
+});
+
+// GET /api/pool/current
+// 获取当前绑定的账号
+app.post('/api/pool/current', (req, res) => {
+  const { key_code, device_id } = req.body || {};
+
+  if (!key_code) {
+    return res.json(error('缺少 key_code'));
+  }
+
+  const assignment = AssignmentsDB.getByKeyCode(key_code);
+  if (!assignment) {
+    return res.json(error('暂无分配的账号'));
+  }
+
+  const account = AccountsDB.get(assignment.account_id);
+  if (!account) {
+    return res.json(error('账号不存在'));
+  }
+
+  return res.json(success({
+    key_code,
+    windsurf_account: {
+      login: account.login,
+      password: account.password,
+    },
+    assigned_at: assignment.assigned_at,
+  }));
+});
+
 // POST /release
 // request: { activationCode, deviceId }
+// 解绑设备并释放账号
 app.post('/release', (req, res) => {
   const { activationCode, deviceId } = req.body || {};
 
@@ -259,6 +526,16 @@ app.post('/release', (req, res) => {
   const record = KeysDB.get(activationCode);
   if (!record || record.device_id !== deviceId) {
     return res.json(error('未找到匹配的设备绑定信息'));
+  }
+
+  // 释放当前分配的账号
+  const assignment = AssignmentsDB.getByKeyCode(activationCode);
+  if (assignment) {
+    AssignmentsDB.release(assignment.id);
+    AccountsDB.update(assignment.account_id, { 
+      status: 'idle', 
+      current_key: null 
+    });
   }
 
   KeysDB.update(activationCode, { device_id: null });
@@ -343,22 +620,21 @@ app.post('/api/key/convert', (req, res) => {
 
 // POST /api/admin/generate-key
 // 生成新的随机激活码
-// request: { quota_total?, validity_days?, count?, length? }
+// request: { mode, validity_days?, switch_total?, count?, length? }
 app.post('/api/admin/generate-key', (req, res) => {
   const {
-    quota_total = 10000,      // 默认额度
-    validity_days = 30,       // 默认有效期（天）
+    mode = 'time',            // 模式：'time' (时间模式) 或 'switch_count' (次数模式)
+    validity_days = 30,       // 时间模式：有效期（天）
+    switch_total = 10,        // 次数模式：可切换次数
     count = 1,                // 生成数量，默认1个
     length = 16               // 激活码长度，默认16位
   } = req.body || {};
 
   const generatedKeys = [];
   const nowMs = Date.now();
-  const validityMs = validity_days * 24 * 3600 * 1000;
 
-  for (let i = 0; i < Math.min(count, 100); i++) { // 最多一次生成100个
+  for (let i = 0; i < Math.min(count, 100); i++) {
     let keyCode;
-    // 确保不重复
     do {
       keyCode = generateActivationCode(length, true);
     } while (KeysDB.has(keyCode));
@@ -366,10 +642,15 @@ app.post('/api/admin/generate-key', (req, res) => {
     const record = {
       key_code: keyCode,
       device_id: null,
-      quota_total: quota_total,
-      quota_used: 0,
+      mode: mode,
+      // 时间模式字段
+      validity_days: mode === 'time' ? validity_days : null,
+      expired_at: null,  // 激活时计算
+      // 次数模式字段
+      switch_total: mode === 'switch_count' ? switch_total : null,
+      switch_used: 0,
+      // 通用字段
       activated_at: null,
-      expired_at: new Date(nowMs + validityMs).toISOString(),
       status: 'active',
       created_at: new Date(nowMs).toISOString(),
     };
@@ -380,8 +661,9 @@ app.post('/api/admin/generate-key', (req, res) => {
 
   return res.json(success({
     count: generatedKeys.length,
+    mode: mode,
     keys: generatedKeys
-  }, `成功生成 ${generatedKeys.length} 个激活码`));
+  }, `成功生成 ${generatedKeys.length} 个${mode === 'time' ? '时间模式' : '次数模式'}激活码`));
 });
 
 // GET /api/admin/list-keys
@@ -403,6 +685,119 @@ app.delete('/api/admin/delete-key/:key_code', (req, res) => {
   }
   KeysDB.delete(key_code);
   return res.json(success(null, '激活码已删除'));
+});
+
+// ========== 管理接口：号池管理 ==========
+
+// POST /api/admin/import-accounts
+// 批量导入 Windsurf 账号
+// request: { accounts: [{ login, password }, ...] }
+app.post('/api/admin/import-accounts', (req, res) => {
+  const { accounts } = req.body || {};
+
+  if (!accounts || !Array.isArray(accounts) || accounts.length === 0) {
+    return res.json(error('请提供账号列表'));
+  }
+
+  const imported = [];
+  const skipped = [];
+  const nowMs = Date.now();
+
+  accounts.forEach((acc, index) => {
+    if (!acc.login || !acc.password) {
+      skipped.push({ index, reason: '缺少 login 或 password' });
+      return;
+    }
+
+    // 检查是否已存在
+    const existing = db.get('accounts').find({ login: acc.login }).value();
+    if (existing) {
+      skipped.push({ index, login: acc.login, reason: '账号已存在' });
+      return;
+    }
+
+    const record = {
+      id: `acc_${nowMs}_${Math.random().toString(36).substr(2, 9)}`,
+      login: acc.login,
+      password: acc.password,
+      status: 'idle',
+      current_key: null,
+      created_at: new Date(nowMs).toISOString(),
+    };
+
+    AccountsDB.add(record);
+    imported.push({ id: record.id, login: record.login });
+  });
+
+  return res.json(success({
+    imported_count: imported.length,
+    skipped_count: skipped.length,
+    imported,
+    skipped,
+  }, `成功导入 ${imported.length} 个账号`));
+});
+
+// GET /api/admin/list-accounts
+// 查看所有账号
+app.get('/api/admin/list-accounts', (req, res) => {
+  const accounts = AccountsDB.getAll();
+  // 不返回密码，只返回基本信息
+  const safeAccounts = accounts.map(acc => ({
+    id: acc.id,
+    login: acc.login,
+    status: acc.status,
+    current_key: acc.current_key,
+    created_at: acc.created_at,
+    last_assigned_at: acc.last_assigned_at,
+  }));
+
+  return res.json(success({
+    total: safeAccounts.length,
+    idle_count: accounts.filter(a => a.status === 'idle').length,
+    in_use_count: accounts.filter(a => a.status === 'in_use').length,
+    accounts: safeAccounts,
+  }));
+});
+
+// DELETE /api/admin/delete-account/:id
+// 删除指定账号
+app.delete('/api/admin/delete-account/:id', (req, res) => {
+  const { id } = req.params;
+  const account = AccountsDB.get(id);
+  if (!account) {
+    return res.json(error('账号不存在'));
+  }
+  if (account.status === 'in_use') {
+    return res.json(error('账号正在使用中，无法删除'));
+  }
+  AccountsDB.delete(id);
+  return res.json(success(null, '账号已删除'));
+});
+
+// GET /api/admin/pool-stats
+// 获取号池统计信息
+app.get('/api/admin/pool-stats', (req, res) => {
+  const accounts = AccountsDB.getAll();
+  const keys = KeysDB.getAll();
+  const assignments = AssignmentsDB.getAll();
+
+  return res.json(success({
+    accounts: {
+      total: accounts.length,
+      idle: accounts.filter(a => a.status === 'idle').length,
+      in_use: accounts.filter(a => a.status === 'in_use').length,
+    },
+    keys: {
+      total: keys.length,
+      active: keys.filter(k => k.status === 'active').length,
+      time_mode: keys.filter(k => k.mode === 'time').length,
+      switch_mode: keys.filter(k => k.mode === 'switch_count').length,
+    },
+    assignments: {
+      total: assignments.length,
+      active: assignments.filter(a => a.status === 'active').length,
+    },
+  }));
 });
 
 app.listen(PORT, () => {
