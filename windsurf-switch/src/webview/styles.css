@@ -1,0 +1,311 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+    padding: 0;
+    margin: 0;
+}
+
+.app {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.card {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--vscode-foreground);
+}
+
+/* Header */
+.header {
+    text-align: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.header p {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Current Account */
+.current-account {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.current-account .account-email {
+    font-size: 14px;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.current-account .account-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 8px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 11px;
+    border-radius: 10px;
+}
+
+.no-account {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Switch Settings */
+.switch-settings .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.switch-settings .setting-label {
+    font-size: 13px;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 20px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 20px;
+    transition: 0.3s;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--vscode-foreground);
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--vscode-button-background);
+    border-color: var(--vscode-button-background);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background-color: var(--vscode-button-foreground);
+}
+
+/* Add Account */
+.add-account .form-group {
+    margin-bottom: 12px;
+}
+
+.add-account label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.add-account input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 13px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    outline: none;
+}
+
+.add-account input:focus {
+    border-color: var(--vscode-focusBorder);
+}
+
+.add-account input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+}
+
+.add-btn {
+    width: 100%;
+    padding: 8px 16px;
+    font-size: 13px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.add-btn:hover:not(:disabled) {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.add-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Account List */
+.account-list .accounts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.account-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.account-item:hover {
+    border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.account-item.current {
+    border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-activeSelectionBackground);
+}
+
+.account-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.account-info .email {
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.account-info .current-tag {
+    padding: 2px 6px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 10px;
+    border-radius: 10px;
+    font-weight: normal;
+}
+
+.account-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.switch-btn,
+.delete-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.switch-btn {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.switch-btn:hover:not(:disabled) {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.switch-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.delete-btn {
+    background-color: transparent;
+    color: var(--vscode-errorForeground);
+    border: 1px solid var(--vscode-errorForeground);
+}
+
+.delete-btn:hover:not(:disabled) {
+    background-color: var(--vscode-errorForeground);
+    color: white;
+}
+
+.delete-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.empty-list {
+    text-align: center;
+    padding: 20px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Loading */
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Error */
+.error {
+    padding: 12px;
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    border-radius: 4px;
+    color: var(--vscode-errorForeground);
+    font-size: 12px;
+}

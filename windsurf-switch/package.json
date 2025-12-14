@@ -1,0 +1,66 @@
+{
+  "name": "windsurf-switch",
+  "displayName": "Windsurf 换号",
+  "description": "Windsurf 账号快速切换工具",
+  "version": "1.0.0",
+  "publisher": "windsurf-tools",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "windsurf-switch.openPanel",
+        "title": "Windsurf 换号: 账号管理"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "windsurf-switch",
+          "title": "Windsurf 换号",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "windsurf-switch": [
+        {
+          "type": "webview",
+          "id": "windsurf-switch.mainView",
+          "name": "账号管理",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch",
+    "dev": "webpack --mode development"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.74.0",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.0.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
